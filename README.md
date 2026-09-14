@@ -32,10 +32,11 @@ extension, nothing needs to stay running on your computer.
 This repo is set up to deploy as-is on [Railway](https://railway.app) using
 the included `Dockerfile`. Steps:
 
-1. **Create a GitHub repo** and upload everything in this folder to it
-   (GitHub web UI: your new repo → **Add file → Upload files** → drag in
-   all the files here, keeping the folder structure — `templates/` and
-   `reference/` need to stay as subfolders).
+1. **Create a GitHub repo** and upload everything in this folder to it.
+   Every file sits flat at the repo root (no subfolders), so on GitHub's
+   web UI you can just go to your new repo → **Add file → Upload files**
+   and select all the files at once (works fine from a phone too — no
+   drag-and-drop of folders needed).
 2. Tell Claude the repo name (`your-username/your-repo-name`) — the rest
    (creating the Railway project, attaching a persistent volume at `/data`
    so replays and the database survive redeploys, and generating a public

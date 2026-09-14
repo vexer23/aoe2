@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AoE2 Campaign Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --page-plane:#f7f5f0; --surface-1:#fcfcfb; --surface-raised:#ffffff;
+    --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#898781;
+    --gridline:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,0.10);
+    --accent:#3c6e5c; --accent-ink:#ffffff; --accent-wash:rgba(60,110,92,0.10);
+    --series-blue:#2a78d6; --series-orange:#eb6834; --series-aqua:#1baf7a;
+    --good:#0ca30c; --good-text:#006300; --critical:#d03b3b; --warn-wash:#fdf3e4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page-plane:#0d0d0d; --surface-1:#1a1a19; --surface-raised:#212120;
+      --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#898781;
+      --gridline:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,0.10);
+      --accent:#5b9c86; --accent-ink:#05120d; --accent-wash:rgba(91,156,134,0.16);
+      --series-blue:#3987e5; --series-orange:#d95926; --series-aqua:#199e70;
+      --good:#0ca30c; --good-text:#3ccb3c; --critical:#e66767; --warn-wash:rgba(250,178,25,0.08);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page-plane:#0d0d0d; --surface-1:#1a1a19; --surface-raised:#212120;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#898781;
+    --gridline:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,0.10);
+    --accent:#5b9c86; --accent-ink:#05120d; --accent-wash:rgba(91,156,134,0.16);
+    --series-blue:#3987e5; --series-orange:#d95926; --series-aqua:#199e70;
+    --good:#0ca30c; --good-text:#3ccb3c; --critical:#e66767; --warn-wash:rgba(250,178,25,0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page-plane); color: var(--text-primary);
+    font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    padding-inline: 20px; padding-block: 28px 60px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  h1, h2, h3 { font-family: "Big Shoulders Display", "Segoe UI", system-ui, sans-serif; text-wrap: balance; margin: 0; }
+  .num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .masthead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; }
+  .masthead h1 { font-size: 34px; font-weight: 800; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+  .masthead-right { display: flex; align-items: center; gap: 10px; }
+  .refresh-pill { font-size: 12.5px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
+  .banner { background: var(--warn-wash); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-size: 14px; color: var(--text-secondary); }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+  .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .card .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; }
+  .search-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type="text"] {
+    flex: 1 1 240px; min-width: 0; font-size: 15px; padding: 11px 14px;
+    border-radius: 9px; border: 1px solid var(--baseline); background: var(--surface-raised); color: var(--text-primary);
+    font-family: inherit;
+  }
+  input[type="text"]:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary {
+    font-family: inherit; font-weight: 700; font-size: 14.5px; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink); border: none; border-radius: 9px; padding: 11px 20px;
+  }
+  button.primary:disabled { opacity: 0.55; cursor: default; }
+  button.ghost {
+    font-family: inherit; font-size: 13px; cursor: pointer; background: none; color: var(--accent);
+    border: none; padding: 0; text-decoration: underline; text-underline-offset: 3px;
+  }
+  button.small {
+    font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    background: var(--surface-raised); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: 7px; padding: 6px 11px;
+  }
+  .status-line { font-size: 13.5px; color: var(--text-secondary); margin-top: 12px; display: flex; align-items: center; gap: 8px; }
+  .spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--gridline); border-top-color: var(--accent); animation: spin 0.8s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  .candidates { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .candidate { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; flex-wrap: wrap; }
+  .candidate .name { font-weight: 700; font-size: 15px; }
+  .candidate .meta { font-size: 12.5px; color: var(--text-muted); }
+  .candidate button { font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; background: var(--accent-wash); color: var(--accent); border: 1px solid var(--accent); border-radius: 7px; padding: 7px 13px; }
+  .tracking-pill { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+  .tracking-pill .tag { background: var(--accent-wash); color: var(--accent); border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .tile .label { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+  .tile .value { font-size: 26px; font-weight: 700; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .tile .value.good { color: var(--good-text); }
+  .tile .value.critical { color: var(--critical); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+  .legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-secondary); margin-bottom: 10px; flex-wrap: wrap; }
+  .legend .sw { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .bar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  .bar-row .rlabel { width: 108px; flex: none; font-size: 13px; color: var(--text-secondary); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1 1 auto; height: 16px; border-radius: 3px; overflow: hidden; display: flex; background: var(--gridline); min-width: 0; }
+  .bar-seg.win { background: var(--good); }
+  .bar-seg.loss { background: var(--critical); }
+  .bar-row .rvalue { flex: none; width: 92px; font-size: 12.5px; color: var(--text-muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .bar-note { font-size: 12.5px; color: var(--text-muted); margin-top: 8px; }
+  svg.linechart { width: 100%; height: auto; display: block; overflow: visible; }
+  svg text { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  .suggestions { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .suggestions li { display: flex; gap: 10px; font-size: 14.5px; line-height: 1.5; color: var(--text-secondary); }
+  .suggestions li::before { content: "\2192"; color: var(--accent); font-weight: 700; flex: none; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 620px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; padding: 0 10px 8px; border-bottom: 1px solid var(--gridline); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--gridline); color: var(--text-secondary); white-space: nowrap; }
+  td.result-win { color: var(--good-text); font-weight: 700; }
+  td.result-loss { color: var(--critical); font-weight: 700; }
+  td.civ { color: var(--text-primary); font-weight: 600; }
+  .num-cell { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .dl-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-size: 12.5px; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+  footer.note { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <div class="eyebrow">AoE2:DE &middot; Last 20 Games</div>
+      <h1>Campaign Report</h1>
+    </div>
+    <div class="masthead-right">
+      <button class="small" id="refreshBtn">Refresh now</button>
+      <div class="refresh-pill" id="refreshPill">Loading&hellip;</div>
+    </div>
+  </div>
+
+  <section class="card" id="searchCard">
+    <h2>Find your profile</h2>
+    <div class="sub">Type your in-game name &mdash; this searches public AoE2 match records for a matching profile.</div>
+    <div class="search-row">
+      <input type="text" id="nameInput" placeholder="e.g. vexer" autocomplete="off" />
+      <button class="primary" id="searchBtn">Find my profile</button>
+    </div>
+    <div id="searchStatus"></div>
+  </section>
+
+  <div id="trackingRow"></div>
+  <div id="dashboard"></div>
+
+  <footer class="note">
+    Match list and ratings come from public records on aoe2insights.com. Replays are downloaded directly from
+    Microsoft's own replay CDN and parsed here for age-up timing, villager counts, build orders and military
+    production &mdash; when a replay isn't available yet or fails to parse, that match still counts toward win/loss
+    and civ/map trends, just without the deeper stats. Refreshes automatically in the background.
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function fmtPct(n) { return (Math.round(n * 10) / 10).toFixed(1) + "%"; }
+  function fmtDelta(n) { return n == null ? "—" : (n > 0 ? "+" : "") + n; }
+  function timeAgo(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var mins = Math.round((Date.now() - d.getTime()) / 60000);
+    if (mins < 2) return "just now";
+    if (mins < 60) return mins + " min ago";
+    var hrs = Math.round(mins / 60);
+    if (hrs < 48) return hrs + " hr ago";
+    return Math.round(hrs / 24) + " days ago";
+  }
+
+  var state = { tracked: null, search: null, stats: null, status: null };
+
+  function tile(label, value, cls) {
+    return '<div class="tile"><div class="label">' + esc(label) + '</div><div class="value' + (cls ? " " + cls : "") + '">' + esc(value) + "</div></div>";
+  }
+
+  function statTiles(target, s) {
+    var wins = s.wins, losses = s.losses, total = s.totalGames;
+    var wr = total ? (wins / total) * 100 : 0;
+    var last5 = (s.ratingSeries || []).slice(-5);
+    var trendDelta = last5.length ? last5.reduce((a, p) => a + (p.delta || 0), 0) : null;
+    target.innerHTML = '<div class="tiles">' +
+      tile("Record", wins + "–" + losses, null) +
+      tile("Win rate", fmtPct(wr), wr >= 50 ? "good" : "critical") +
+      tile("Current rating", s.currentRating != null ? s.currentRating : "—", null) +
+      tile("Last 5 games", trendDelta == null ? "—" : fmtDelta(trendDelta), trendDelta > 0 ? "good" : (trendDelta < 0 ? "critical" : null)) +
+      tile("Replays analyzed", (s.replaysAnalyzed || 0) + " / " + total, null) +
+      "</div>";
+  }
+
+  function ratingLine(host, series) {
+    if (!series || !series.length) { host.innerHTML = '<div class="bar-note">Not enough data yet for a rating trend.</div>'; return; }
+    var w = 620, h = 200, padL = 40, padR = 16, padT = 16, padB = 26;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var vals = series.map(p => p.rating);
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    if (min === max) { min -= 10; max += 10; }
+    var pad = (max - min) * 0.12; min -= pad; max += pad;
+    function x(i) { return padL + (series.length === 1 ? innerW / 2 : (innerW * i) / (series.length - 1)); }
+    function y(v) { return padT + innerH - ((v - min) / (max - min)) * innerH; }
+    var gridLines = "";
+    for (var t = 0; t <= 4; t++) {
+      var v = min + ((max - min) * t) / 4, yy = y(v);
+      gridLines += '<line x1="' + padL + '" x2="' + (w - padR) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--gridline)" stroke-width="1"/>';
+      gridLines += '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" font-size="10.5" fill="var(--text-muted)" text-anchor="end">' + Math.round(v) + "</text>";
+    }
+    var pathD = series.map((p, i) => (i === 0 ? "M" : "L") + x(i).toFixed(1) + "," + y(p.rating).toFixed(1)).join(" ");
+    var dots = series.map((p, i) => {
+      var color = p.result === "win" ? "var(--good)" : (p.result === "loss" ? "var(--critical)" : "var(--text-muted)");
+      return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.rating).toFixed(1) + '" r="4" fill="' + color + '" stroke="var(--surface-1)" stroke-width="1.5"><title>' +
+        esc((p.label || ("Game " + (i + 1))) + ": " + p.rating + " (" + fmtDelta(p.delta) + ", " + p.result + ")") + "</title></circle>";
+    }).join("");
+    var last = series[series.length - 1];
+    var lastLabel = '<text x="' + (x(series.length - 1) + 8).toFixed(1) + '" y="' + (y(last.rating) + 4).toFixed(1) + '" font-size="12" font-weight="600" fill="var(--text-primary)">' + last.rating + "</text>";
+    host.innerHTML = '<div class="legend">' +
+        '<span class="sw"><span class="dot" style="background:var(--good)"></span>Win</span>' +
+        '<span class="sw"><span class="dot" style="background:var(--critical)"></span>Loss</span>' +
+      '</div><svg class="linechart" viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="Rating over recent games">' +
+        gridLines + '<path d="' + pathD + '" fill="none" stroke="var(--series-blue)" stroke-width="2"/>' + dots + lastLabel + "</svg>";
+  }
+
+  function ageUpLine(host, series) {
+    if (!series || series.length < 2) { host.innerHTML = '<div class="bar-note">Need at least 2 analyzed replays for an age-up trend.</div>'; return; }
+    var keys = [["feudal_min", "var(--series-blue)", "Feudal"], ["castle_min", "var(--series-orange)", "Castle"], ["imperial_min", "var(--series-aqua)", "Imperial"]];
+    var w = 620, h = 220, padL = 40, padR = 16, padT = 16, padB = 26;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var allVals = [];
+    keys.forEach(k => series.forEach(s => { if (s[k[0]] != null) allVals.push(s[k[0]]); }));
+    if (!allVals.length) { host.innerHTML = '<div class="bar-note">No age-up data parsed yet.</div>'; return; }
+    var min = 0, max = Math.max.apply(null, allVals) * 1.1;
+    function x(i) { return padL + (series.length === 1 ? innerW / 2 : (innerW * i) / (series.length - 1)); }
+    function y(v) { return padT + innerH - ((v - min) / (max - min)) * innerH; }
+    var gridLines = "";
+    for (var t = 0; t <= 4; t++) {
+      var v = min + ((max - min) * t) / 4, yy = y(v);
+      gridLines += '<line x1="' + padL + '" x2="' + (w - padR) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--gridline)" stroke-width="1"/>';
+      gridLines += '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" font-size="10.5" fill="var(--text-muted)" text-anchor="end">' + Math.round(v) + "</text>";
+    }
+    var lines = keys.map(function (k) {
+      var pts = series.map((s, i) => s[k[0]] != null ? [x(i), y(s[k[0]])] : null).filter(Boolean);
+      if (pts.length < 2) return "";
+      var d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+      return '<path d="' + d + '" fill="none" stroke="' + k[1] + '" stroke-width="2"/>';
+    }).join("");
+    var legend = '<div class="legend">' + keys.map(k => '<span class="sw"><span class="dot" style="background:' + k[1] + '"></span>' + k[2] + '</span>').join("") + "</div>";
+    host.innerHTML = legend + '<svg class="linechart" viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="Age-up timing trend (minutes)">' + gridLines + lines + "</svg>";
+  }
+
+  function breakdownBars(target, rows, opts) {
+    opts = opts || {};
+    if (!rows || !rows.length) { target.innerHTML = '<div class="bar-note">' + esc(opts.emptyText || "No data yet.") + "</div>"; return; }
+    var maxGames = Math.max.apply(null, rows.map(r => r.games));
+    var html = '<div class="legend"><span class="sw"><span class="dot" style="background:var(--good)"></span>Win</span><span class="sw"><span class="dot" style="background:var(--critical)"></span>Loss</span></div>';
+    rows.forEach(function (r) {
+      var winPct = r.games ? (r.wins / r.games) * 100 : 0;
+      var winW = maxGames ? (r.wins / maxGames) * 100 : 0;
+      var lossW = maxGames ? ((r.games - r.wins) / maxGames) * 100 : 0;
+      html += '<div class="bar-row"><div class="rlabel" title="' + esc(r.label) + '">' + esc(r.label) + '</div>' +
+        '<div class="bar-track">' +
+          (winW > 0 ? '<span class="bar-seg win" style="width:' + winW.toFixed(1) + '%"></span>' : "") +
+          (lossW > 0 ? '<span class="bar-seg loss" style="width:' + lossW.toFixed(1) + '%; margin-left:' + (winW > 0 ? "2px" : "0") + '"></span>' : "") +
+        '</div><div class="rvalue">' + r.wins + "–" + (r.games - r.wins) + " · " + fmtPct(winPct) + "</div></div>";
+    });
+    target.innerHTML = html;
+  }
+
+  function villagerTable(host, series) {
+    if (!series || !series.length) { host.innerHTML = '<div class="bar-note">No villager-count data parsed yet.</div>'; return; }
+    var rows = series.map(s => "<tr><td>" + esc(s.label) + "</td><td class=\"num-cell\">" + (s.at_10min ?? "—") +
+      "</td><td class=\"num-cell\">" + (s.at_20min ?? "—") + "</td><td class=\"num-cell\">" + (s.final ?? "—") + "</td></tr>").join("");
+    host.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Game</th><th>@10min</th><th>@20min</th><th>Final</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+  }
+
+  function firstMilitaryTable(host, series) {
+    if (!series || !series.length) { host.innerHTML = '<div class="bar-note">No first-military data parsed yet.</div>'; return; }
+    var rows = series.map(s => "<tr><td>" + esc(s.label) + "</td><td class=\"civ\">" + esc(s.unit) + "</td><td class=\"num-cell\">" + s.minute + " min</td></tr>").join("");
+    host.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Game</th><th>First unit</th><th>At</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+  }
+
+  function matchesTable(target, matches) {
+    if (!matches || !matches.length) { target.innerHTML = ""; return; }
+    var rows = matches.map(function (m) {
+      var dl = m.has_replay_analysis ? '<a class="dl-link" href="/replays/' + m.match_id + '" download>replay</a>' : '<span class="badge">no replay</span>';
+      return "<tr><td>" + esc(m.date || "—") + "</td>" +
+        '<td class="civ">' + esc(m.civ || "—") + "</td>" +
+        "<td>" + esc(m.map || "—") + "</td>" +
+        "<td>" + esc((m.opponents || []).join(", ")) + "</td>" +
+        '<td class="' + (m.result === "win" ? "result-win" : "result-loss") + '">' + (m.result === "win" ? "Win" : m.result === "loss" ? "Loss" : "—") + "</td>" +
+        '<td class="num-cell">' + fmtDelta(m.ratingDelta) + "</td>" +
+        '<td class="num-cell">' + esc(m.duration || "—") + "</td>" +
+        "<td>" + esc(m.strategy || "—") + "</td>" +
+        "<td>" + dl + "</td></tr>";
+    }).join("");
+    target.innerHTML = '<div class="table-wrap"><table><thead><tr><th>When</th><th>Civ</th><th>Map</th><th>Opponents</th><th>Result</th><th>Rating</th><th>Duration</th><th>Opening</th><th>Replay</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+  }
+
+  function renderRefreshPill() {
+    var el = document.getElementById("refreshPill");
+    if (state.stats) { el.textContent = "Updated " + timeAgo(state.stats.computedAt); }
+    else if (state.status && state.status.message) { el.textContent = state.status.message; }
+    else { el.textContent = "Not tracking a player yet"; }
+  }
+
+  function renderSearch() {
+    var statusEl = document.getElementById("searchStatus");
+    var s = state.search;
+    if (!s) { statusEl.innerHTML = ""; return; }
+    if (s.status === "pending") {
+      statusEl.innerHTML = '<div class="status-line"><span class="spinner"></span>Searching for “' + esc(s.query) + '”&hellip;</div>';
+    } else if (s.status === "error" || (s.status === "resolved" && (!s.candidates || !s.candidates.length))) {
+      statusEl.innerHTML = '<div class="status-line">No matching profiles found for “' + esc(s.query) + '”' + (s.error_message ? " (" + esc(s.error_message) + ")" : "") + ". Try a different spelling.</div>";
+    } else if (s.status === "resolved") {
+      var html = '<div class="candidates">';
+      s.candidates.forEach((c, i) => {
+        html += '<div class="candidate"><div><div class="name">' + esc(c.name) + '</div><div class="meta">' +
+          (c.country ? esc(c.country) + " · " : "") + (c.rating_label ? esc(c.rating_label) + " · " : "") + "profile " + esc(c.profile_id) +
+          '</div></div><button data-idx="' + i + '">This is me</button></div>';
+      });
+      statusEl.innerHTML = html + "</div>";
+      Array.prototype.forEach.call(statusEl.querySelectorAll("button[data-idx]"), btn =>
+        btn.addEventListener("click", () => trackCandidate(s.candidates[parseInt(btn.getAttribute("data-idx"), 10)])));
+    }
+  }
+
+  function renderTrackingRow() {
+    var el = document.getElementById("trackingRow");
+    var t = state.tracked;
+    if (!t || t.status !== "confirmed") { el.innerHTML = ""; return; }
+    el.innerHTML = '<div class="tracking-pill"><span class="tag">Tracking</span><strong>' + esc(t.name) + "</strong>" +
+      (t.rating_label ? '<span style="color:var(--text-muted)">' + esc(t.rating_label) + "</span>" : "") +
+      '<button class="ghost" id="trackOther">Track someone else</button></div>';
+    document.getElementById("trackOther").addEventListener("click", () => fetch("/api/untrack", { method: "POST" }).then(poll));
+  }
+
+  function renderDashboard() {
+    var el = document.getElementById("dashboard");
+    var s = state.stats;
+    if (!s) { el.innerHTML = ""; return; }
+    el.innerHTML =
+      '<div id="tilesHost"></div>' +
+      '<div class="card"><h2>Rating over time</h2><div class="sub">Win/loss shown per game.</div><div id="lineHost"></div></div>' +
+      '<div class="card"><h2>Age-up timing</h2><div class="sub">From parsed replays, in minutes.</div><div id="ageHost"></div></div>' +
+      '<div class="grid2">' +
+        '<div class="card"><h2>By civilization</h2><div class="sub">Sorted by games played.</div><div id="civHost"></div></div>' +
+        '<div class="card"><h2>By map</h2><div id="mapHost"></div></div>' +
+        '<div class="card"><h2>Game length</h2><div id="durHost"></div></div>' +
+        '<div class="card"><h2>Opening strategy</h2><div class="sub">Only tagged on some matches.</div><div id="stratHost"></div></div>' +
+        '<div class="card"><h2>Villager count</h2><div class="sub">From parsed replays.</div><div id="villHost"></div></div>' +
+        '<div class="card"><h2>First military unit</h2><div class="sub">From parsed replays.</div><div id="milHost"></div></div>' +
+      "</div>" +
+      '<div class="card"><h2>Worth a look</h2><ul class="suggestions" id="suggHost"></ul></div>' +
+      '<div class="card"><h2>Recent matches</h2><div id="tableHost"></div></div>';
+
+    statTiles(document.getElementById("tilesHost"), s);
+    ratingLine(document.getElementById("lineHost"), s.ratingSeries);
+    ageUpLine(document.getElementById("ageHost"), s.ageUpSeries);
+    breakdownBars(document.getElementById("civHost"), s.civStats, { emptyText: "No civ data yet." });
+    breakdownBars(document.getElementById("mapHost"), s.mapStats, { emptyText: "No map data yet." });
+    breakdownBars(document.getElementById("durHost"), s.durationStats, { emptyText: "No duration data yet." });
+    breakdownBars(document.getElementById("stratHost"), s.strategyStats, { emptyText: "No opening strategies were tagged on these matches." });
+    villagerTable(document.getElementById("villHost"), s.villagerSeries);
+    firstMilitaryTable(document.getElementById("milHost"), s.firstMilitarySeries);
+    document.getElementById("suggHost").innerHTML = (s.suggestions || []).map(x => "<li>" + esc(x) + "</li>").join("") || "<li>Not enough games yet to surface trends.</li>";
+    matchesTable(document.getElementById("tableHost"), s.recentMatches);
+  }
+
+  function renderAll() { renderRefreshPill(); renderSearch(); renderTrackingRow(); renderDashboard(); }
+
+  function trackCandidate(c) {
+    fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidate: c }) }).then(poll);
+  }
+
+  function submitSearch() {
+    var input = document.getElementById("nameInput");
+    var name = input.value.trim();
+    if (!name) return;
+    fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name }) }).then(poll);
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", submitSearch);
+  document.getElementById("nameInput").addEventListener("keydown", e => { if (e.key === "Enter") submitSearch(); });
+  document.getElementById("refreshBtn").addEventListener("click", () => fetch("/api/refresh", { method: "POST" }).then(poll));
+
+  function poll() {
+    fetch("/api/state").then(r => r.json()).then(data => { state = data; renderAll(); }).catch(() => {});
+  }
+
+  poll();
+  setInterval(poll, 4000);
+})();
+</script>
+</body>
+</html>

@@ -8,7 +8,10 @@ import storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-app = Flask(__name__)
+# All files (including index.html) live at the repo root rather than in a
+# templates/ subfolder, so this app is a flat set of files that's easy to
+# upload one-by-one through GitHub's web UI.
+app = Flask(__name__, template_folder=".")
 
 storage.init()
 

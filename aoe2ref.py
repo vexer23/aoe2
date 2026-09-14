@@ -1,7 +1,7 @@
 """Static AoE2 reference data (civ/tech/unit/building names).
 
 Bundled from the `aocref` package's dataset 100 (the current DE dataset),
-downloaded from PyPI at build time. See reference/aocref_100.json.
+downloaded from PyPI at build time. See aocref_100.json.
 
 Key facts (verified against the installed mgz-fast 1.0.0 source and this
 dataset -- see project notes):
@@ -16,7 +16,7 @@ dataset -- see project notes):
 import json
 import os
 
-_REF_PATH = os.path.join(os.path.dirname(__file__), "reference", "aocref_100.json")
+_REF_PATH = os.path.join(os.path.dirname(__file__), "aocref_100.json")
 
 with open(_REF_PATH, "r", encoding="utf-8") as f:
     _DATA = json.load(f)
