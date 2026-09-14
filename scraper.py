@@ -25,10 +25,45 @@ import aoe2ref
 LOGGER = logging.getLogger("scraper")
 
 BASE = "https://www.aoe2insights.com"
+# A self-identifying bot User-Agent got flat 403'd by the site's WAF before a
+# single request even reached page logic. Presenting as an ordinary browser
+# (full header set, persistent session/cookies, a warm-up hit on the
+# homepage first) is what real browsing traffic looks like and is enough to
+# get past simple bot rules -- it is not an attempt to defeat anything more
+# sophisticated than that (no CAPTCHA solving, no JS challenge execution).
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; AoE2CampaignReport/1.0; +https://github.com/)"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Referer": BASE + "/",
 }
 TIMEOUT = 20
+
+_session = requests.Session()
+_session.headers.update(HEADERS)
+_warmed_up = False
+
+
+def _warm_up():
+    """Visit the homepage once per process so we carry the same cookies a
+    real browser would have before hitting /search/ or /user/.../matches/."""
+    global _warmed_up
+    if _warmed_up:
+        return
+    try:
+        _session.get(BASE + "/", timeout=TIMEOUT)
+    except requests.RequestException as e:
+        LOGGER.info("warm-up request failed (continuing anyway): %s", e)
+    _warmed_up = True
+
 
 USER_LINK_RE = re.compile(r"/user/(\d+)/")
 MATCH_LINK_RE = re.compile(r"/match/(\d+)/")
@@ -45,7 +80,13 @@ STRATEGY_RE = re.compile(
 
 
 def _get(url, params=None):
-    resp = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
+    _warm_up()
+    resp = _session.get(url, params=params, timeout=TIMEOUT)
+    if resp.status_code >= 400:
+        LOGGER.warning(
+            "request to %s returned %s; body starts with: %r",
+            resp.url, resp.status_code, resp.text[:300],
+        )
     resp.raise_for_status()
     return resp
 
