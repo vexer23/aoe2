@@ -45,6 +45,13 @@ LOGGER = logging.getLogger("replay_parser")
 
 BUILD_ORDER_CAP_MS = 20 * 60 * 1000  # first 20 minutes, matches earlier project scope
 
+# Bump this whenever parsing logic changes in a way that affects the output
+# (not just bugfixes to error handling). pipeline.py compares this against
+# the value stored on an already-parsed match and reparses it if they don't
+# match, so a fix here self-heals previously-cached matches on the next
+# refresh instead of requiring a manual force-refresh.
+PARSER_VERSION = 2
+
 
 class ReplayParseError(Exception):
     pass
@@ -131,7 +138,17 @@ def parse_replay(raw_bytes):
 
     duration_ms = current_time_ms
 
+    if error_count:
+        LOGGER.info(
+            "replay parsed with %d/%d operation errors (save_version=%s) -- "
+            "a high error count usually means this save version has action "
+            "formats mgz-fast doesn't fully know about yet, which can silently "
+            "undercount things like villagers",
+            error_count, op_count + error_count, header.get("save_version"),
+        )
+
     result = {
+        "parser_version": PARSER_VERSION,
         "save_version": header.get("save_version"),
         "duration_ms": duration_ms,
         "players": list(players_by_number.values()),
@@ -157,9 +174,9 @@ def _decode(value):
 
 def _new_player_state():
     return {
-        "villager_events": [],   # (t_ms, delta) delta always +1 per villager queued
+        "villager_events": [],   # (t_ms, unit_id, amount) -- amount is how many this one action queued
         "age_up_events": {},     # tech_name -> t_ms (first occurrence)
-        "military_events": [],   # (t_ms, unit_id, unit_name)
+        "military_events": [],   # (t_ms, unit_id, unit_name) -- one entry per action, not per unit produced
         "building_events": [],   # (t_ms, building_id, building_name)
         "resigned_at_ms": None,
     }
@@ -170,8 +187,15 @@ def _apply_action(state, action_type, payload, t_ms):
         unit_id = payload.get("unit_id")
         if unit_id is None:
             return
+        # DE_QUEUE carries an `amount` field -- a single queue action can
+        # enqueue more than one unit at once (e.g. queuing several villagers
+        # in one click), and ignoring it silently undercounts production.
+        # MAKE has no such field and always represents exactly one unit.
+        amount = payload.get("amount", 1) if action_type == Action.DE_QUEUE else 1
+        if not isinstance(amount, int) or amount < 1 or amount > 50:
+            amount = 1  # defensive: a garbage/out-of-range value shouldn't corrupt the count
         if aoe2ref.is_villager(unit_id):
-            state["villager_events"].append((t_ms, unit_id))
+            state["villager_events"].append((t_ms, unit_id, amount))
         elif aoe2ref.is_military(unit_id):
             state["military_events"].append((t_ms, unit_id, aoe2ref.object_name(unit_id)))
         return
@@ -201,11 +225,15 @@ def _finalize_player(state, info):
     military_events = sorted(state["military_events"])
     building_events = sorted(state["building_events"])
 
-    # Cumulative villager count over time (each queue event = +1 eventual villager).
+    # Cumulative villager count over time (each queue event adds its `amount`,
+    # not always 1 -- see _apply_action). This still only counts villagers
+    # ever produced, not villagers currently alive (it doesn't subtract
+    # deaths), and doesn't include the handful of villagers a player starts
+    # the game with (those exist from the start, never "queued").
     villager_timeline = []
     count = 0
-    for t_ms, _unit_id in villager_events:
-        count += 1
+    for t_ms, _unit_id, amount in villager_events:
+        count += amount
         villager_timeline.append({"t_ms": t_ms, "count": count})
 
     first_military = None

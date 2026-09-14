@@ -152,7 +152,17 @@ def _do_refresh(force=False):
 
     for m in scraped_matches:
         existing = storage.get_match(m["match_id"])
-        needs_parse = force or existing is None or (existing.get("parsed") is None and existing.get("parse_error") is None)
+        existing_parsed = (existing or {}).get("parsed")
+        # Reparse if: forced, never seen before, never successfully parsed
+        # and not permanently failed either, OR it was parsed by an older
+        # version of replay_parser.py -- this makes a parsing-logic fix
+        # (e.g. a villager-count bug) self-heal already-cached matches on
+        # the next refresh, without needing a manual force-refresh.
+        stale_version = existing_parsed is not None and existing_parsed.get("parser_version") != replay_parser.PARSER_VERSION
+        needs_parse = (
+            force or existing is None or stale_version or
+            (existing.get("parsed") is None and existing.get("parse_error") is None)
+        )
         storage.upsert_match(m["match_id"], scraped=m)
 
         if not needs_parse:
@@ -190,6 +200,7 @@ def _do_refresh(force=False):
             for p in parsed_full["players"] if p["number"] != me["number"]
         ]
         parsed_summary = {
+            "parser_version": parsed_full.get("parser_version"),
             "duration_ms": parsed_full["duration_ms"],
             "civ": me["civ_name"],
             "age_ups": me["age_ups"],
