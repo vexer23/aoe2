@@ -49,6 +49,13 @@ LEADERBOARD_LABELS = {
 }
 
 
+def _first_present(d, keys):
+    for k in keys:
+        if k in d and d[k] is not None:
+            return d[k]
+    return None
+
+
 def _get(path, params):
     url = f"{BASE}{path}"
     try:
@@ -209,11 +216,18 @@ def get_recent_matches(profile_id, min_matches=20, max_pages=4):
     stats.sort(key=lambda m: m.get("startgametime") or 0, reverse=True)
 
     matches = []
-    for m in stats[:min_matches]:
+    for idx, m in enumerate(stats[:min_matches]):
         results = m.get("matchhistoryreportresults") or []
         me = next((r for r in results if r.get("profile_id") == target_id), None)
         if me is None:
             continue
+
+        if idx == 0:
+            # The exact key names inside matchhistorymember for rating were
+            # inferred from a sibling Relic-platform game, not confirmed
+            # against a live AoE2 response -- log one real sample so a wrong
+            # guess is fast to spot and fix from Railway's logs alone.
+            LOGGER.info("matches_debug sample report for profile %s: %s", target_id, json.dumps(me)[:1000])
 
         civ = aoe2ref.civ_name(me.get("civilization_id"))
         opponents = []
@@ -228,8 +242,13 @@ def get_recent_matches(profile_id, min_matches=20, max_pages=4):
         result = "win" if resulttype == 1 else ("loss" if resulttype is not None else None)
 
         member = me.get("matchhistorymember") or {}
-        old_r, new_r = member.get("oldrating"), member.get("newrating")
+        old_r = _first_present(member, ("oldrating", "old_rating", "oldRating"))
+        new_r = _first_present(member, ("newrating", "new_rating", "newRating"))
         rating_delta = (new_r - old_r) if (old_r is not None and new_r is not None) else None
+        if rating_delta is None:
+            # Fall back to a direct delta field, in case the API exposes one
+            # instead of (or in addition to) before/after values.
+            rating_delta = _first_present(member, ("ratingdelta", "rating_delta", "ratingchange", "rating_change"))
 
         start, end = m.get("startgametime"), m.get("completiontime")
         duration_min = round((end - start) / 60, 1) if (start and end and end > start) else None

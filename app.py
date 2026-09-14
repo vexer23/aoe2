@@ -44,6 +44,7 @@ def api_state():
         "search": storage.kv_get("search_current"),
         "stats": storage.kv_get("stats_summary"),
         "status": storage.kv_get("status"),
+        "lastGame": storage.kv_get("last_game_report"),
     })
 
 
