@@ -1,240 +1,249 @@
-"""Best-effort scraping of aoe2insights.com for player search + match history.
+"""AoE2:DE player search + match history, sourced from the official Relic /
+World's Edge community API -- the same backend aoe2insights.com,
+aoe2companion.com and aoestats.io are themselves built on top of.
 
-This is the one module in the app I could not test against live HTML from
-the build environment (its outbound network is policy-restricted to package
-registries only). It's deliberately defensive: field extraction is done by
-searching for known-shape patterns (civ names, map names, "/match/<id>/" and
-"/user/<id>/" links, W/L + rating-delta patterns) inside the page's plain
-text rather than relying on guessed CSS class names, which is more likely to
-survive small markup changes. If a field can't be confidently found it's left
-None rather than guessed wrong. Check the RUNTIME_NOTES.md file for how to
-patch this quickly if the site's markup doesn't match on first deploy --
-`get_logs()` output (search_debug / matches_debug) is written specifically
-to make that diagnosis fast.
+This replaces an earlier version of this module that scraped aoe2insights.com's
+HTML directly. That approach hit a hard WAF block (HTTP 403 on every request,
+independent of headers/session/User-Agent) that's specific to that site's own
+bot protection -- it wasn't a restriction on the underlying data. Talking to
+the Relic API directly is both more reliable and the more honest approach: it's
+the same public, unauthenticated JSON API every third-party AoE2 stats site
+already depends on, not a workaround of anything.
+
+Two real limitations of this API, by design, not oversight:
+  - Player lookup (`GetPersonalStat` with `aliases=[...]`) is an EXACT alias
+    match, not fuzzy/typeahead search -- there is no partial-name search
+    endpoint on this backend. `search_player()` tries a small number of case
+    variants of what was typed to raise the odds of a hit, then gives up.
+  - There's no "opening strategy" field anywhere in this API. `strategy` is
+    always None here; that's a real gap, not a bug -- the UI already handles
+    an empty strategy breakdown gracefully.
 """
+import json
 import logging
-import re
 import time
-from urllib.parse import quote
+from datetime import datetime, timezone
 
 import requests
-from bs4 import BeautifulSoup
 
 import aoe2ref
 
 LOGGER = logging.getLogger("scraper")
 
-BASE = "https://www.aoe2insights.com"
-# A self-identifying bot User-Agent got flat 403'd by the site's WAF before a
-# single request even reached page logic. Presenting as an ordinary browser
-# (full header set, persistent session/cookies, a warm-up hit on the
-# homepage first) is what real browsing traffic looks like and is enough to
-# get past simple bot rules -- it is not an attempt to defeat anything more
-# sophisticated than that (no CAPTCHA solving, no JS challenge execution).
+BASE = "https://aoe-api.worldsedgelink.com"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
-    "Referer": BASE + "/",
+    "User-Agent": "AoE2CampaignReport/1.0 (+https://github.com/vexer23/aoe2)",
 }
 TIMEOUT = 20
+TITLE = "age2"
 
-_session = requests.Session()
-_session.headers.update(HEADERS)
-_warmed_up = False
+# leaderboard_id -> short label, for turning a raw rating into something
+# readable like "RM 1v1 1850". Values corroborated across multiple
+# actively-maintained community tools that consume this same API.
+LEADERBOARD_LABELS = {
+    3: "RM 1v1",
+    4: "RM Team",
+    13: "EW 1v1",
+    14: "EW Team",
+    17: "EW 1v1",
+}
 
 
-def _warm_up():
-    """Visit the homepage once per process so we carry the same cookies a
-    real browser would have before hitting /search/ or /user/.../matches/."""
-    global _warmed_up
-    if _warmed_up:
-        return
+def _get(path, params):
+    url = f"{BASE}{path}"
     try:
-        _session.get(BASE + "/", timeout=TIMEOUT)
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
     except requests.RequestException as e:
-        LOGGER.info("warm-up request failed (continuing anyway): %s", e)
-    _warmed_up = True
-
-
-USER_LINK_RE = re.compile(r"/user/(\d+)/")
-MATCH_LINK_RE = re.compile(r"/match/(\d+)/")
-RATING_LABEL_RE = re.compile(
-    r"\b((?:RM|EW|DM)\s*(?:1v1|Team)|Unranked)\b[^\d\n]{0,10}(\d{2,5})", re.IGNORECASE
-)
-DELTA_RE = re.compile(r"([+-]\s?\d{1,3})\s*(?:rating|elo)?\b", re.IGNORECASE)
-DURATION_RE = re.compile(r"\b(\d{1,3})\s*m(?:in)?(?:\s*(\d{1,2})\s*s)?\b")
-AGO_RE = re.compile(r"\b(\d+\s*(?:minute|hour|day|week|month|year)s?\s*ago|just now)\b", re.IGNORECASE)
-STRATEGY_RE = re.compile(
-    r"\b((?:Archer|Scout|Man-at-Arms|Drush|Fast Castle|Feudal|Tower)\s*Rush|Fast Castle|Drush\+?)\b",
-    re.IGNORECASE,
-)
-
-
-def _get(url, params=None):
-    _warm_up()
-    resp = _session.get(url, params=params, timeout=TIMEOUT)
+        LOGGER.warning("request to %s failed: %s", url, e)
+        raise
     if resp.status_code >= 400:
-        LOGGER.warning(
-            "request to %s returned %s; body starts with: %r",
-            resp.url, resp.status_code, resp.text[:300],
-        )
-    resp.raise_for_status()
-    return resp
+        LOGGER.warning("request to %s returned %s; body starts with: %r",
+                        resp.url, resp.status_code, resp.text[:300])
+        resp.raise_for_status()
+    try:
+        return resp.json()
+    except ValueError:
+        LOGGER.warning("non-JSON response from %s; body starts with: %r", resp.url, resp.text[:300])
+        raise
+
+
+def _best_rating_label(statgroup_id, leaderboard_stats):
+    """Pick one representative rating to show for a profile: prefer RM 1v1,
+    then RM Team, then whatever else is present."""
+    by_leaderboard = {
+        s["leaderboard_id"]: s for s in leaderboard_stats
+        if s.get("statgroup_id") == statgroup_id
+    }
+    for lb_id in (3, 4, 13, 14, 17):
+        s = by_leaderboard.get(lb_id)
+        if s and s.get("rating") is not None:
+            return f"{LEADERBOARD_LABELS.get(lb_id, 'RM')} {s['rating']}"
+    for s in by_leaderboard.values():
+        if s.get("rating") is not None:
+            return f"{LEADERBOARD_LABELS.get(s.get('leaderboard_id'), 'Rated')} {s['rating']}"
+    return None
+
+
+def _personal_stat(alias):
+    """One GetPersonalStat call for a given alias string. Returns the raw
+    parsed JSON dict, or None on failure."""
+    try:
+        data = _get("/community/leaderboard/GetPersonalStat", {
+            "title": TITLE,
+            "aliases": json.dumps([alias]),
+        })
+    except (requests.RequestException, ValueError):
+        return None
+    if data.get("statGroups"):
+        return data
+    return None
 
 
 def search_player(name, max_candidates=8):
-    """Search aoe2insights.com by display name. Returns a list of candidate dicts:
-    {"name", "profile_id", "country", "rating_label"}. Best effort -- may return []
-    even for a real name if the site's markup has changed; check logs."""
-    try:
-        resp = _get(f"{BASE}/search/", params={"q": name})
-    except requests.RequestException as e:
-        LOGGER.warning("search request failed for %r: %s", name, e)
+    """Look up a player by exact display name/alias (case variants are tried
+    since the API does exact matching). Returns candidate dicts:
+    {"name", "profile_id", "country", "rating_label"}."""
+    name = (name or "").strip()
+    if not name:
         return []
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    tried = []
+    for variant in {name, name.lower(), name.upper(), name.title(), name.capitalize()}:
+        if variant in tried:
+            continue
+        tried.append(variant)
+        data = _personal_stat(variant)
+        if data:
+            break
+    else:
+        LOGGER.info("search_debug no candidates found for %r after trying case variants %r", name, tried)
+        return []
+
+    leaderboard_stats = data.get("leaderboardStats") or []
     candidates = []
     seen_ids = set()
-
-    for a in soup.find_all("a", href=USER_LINK_RE):
-        m = USER_LINK_RE.search(a.get("href", ""))
-        if not m:
-            continue
-        profile_id = m.group(1)
-        if profile_id in seen_ids:
-            continue
-
-        link_text = a.get_text(strip=True)
-        # Look at the surrounding block (parent container) for rating/country context.
-        container = a
-        for _ in range(3):
-            if container.parent is not None:
-                container = container.parent
-        block_text = container.get_text(" ", strip=True)
-
-        rating_match = RATING_LABEL_RE.search(block_text)
-        rating_label = f"{rating_match.group(1)} {rating_match.group(2)}" if rating_match else None
-
-        if not link_text or link_text.isdigit():
-            continue
-
-        seen_ids.add(profile_id)
-        candidates.append({
-            "name": link_text,
-            "profile_id": profile_id,
-            "country": None,  # not reliably extractable without knowing the flag markup; left for a future pass
-            "rating_label": rating_label,
-        })
-        if len(candidates) >= max_candidates:
-            break
-
-    if not candidates:
-        LOGGER.info("search_debug no candidates found for %r; response length=%d", name, len(resp.text))
+    for group in data.get("statGroups") or []:
+        for member in group.get("members") or []:
+            profile_id = member.get("profile_id")
+            if profile_id is None or profile_id in seen_ids:
+                continue
+            seen_ids.add(profile_id)
+            candidates.append({
+                "name": member.get("alias") or name,
+                "profile_id": str(profile_id),
+                "country": (member.get("country") or "").upper() or None,
+                "rating_label": _best_rating_label(group.get("id"), leaderboard_stats),
+            })
+            if len(candidates) >= max_candidates:
+                return candidates
     return candidates
 
 
+def _prettify_map(slug):
+    if not slug:
+        return None
+    base = slug.split(".")[0].replace("_", " ").replace("-", " ").strip()
+    if not base:
+        return None
+    pretty = base.title()
+    # Prefer the canonical display name from the reference dataset when the
+    # prettified slug matches one, case-insensitively (fixes things like
+    # capitalization of "of" / "the" that .title() gets wrong).
+    for known in aoe2ref.MAP_NAMES:
+        if known.lower() == pretty.lower():
+            return known
+    return pretty
+
+
+def _time_ago(unix_seconds):
+    if not unix_seconds:
+        return None
+    try:
+        then = datetime.fromtimestamp(unix_seconds, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return None
+    delta = datetime.now(timezone.utc) - then
+    mins = int(delta.total_seconds() // 60)
+    if mins < 1:
+        return "just now"
+    if mins < 60:
+        return f"{mins} minute{'s' if mins != 1 else ''} ago"
+    hours = mins // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = hours // 24
+    if days < 30:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    months = days // 30
+    if months < 12:
+        return f"{months} month{'s' if months != 1 else ''} ago"
+    years = days // 365
+    return f"{years} year{'s' if years != 1 else ''} ago"
+
+
 def get_recent_matches(profile_id, min_matches=20, max_pages=4):
-    """Scrape the player's match list. Returns a list of dicts, newest first, each:
-    {match_id, map, civ, opponents (list[str]), result ('win'|'loss'|None),
-     rating_delta (int|None), duration_min (float|None), ago_text, strategy (str|None)}
-    """
-    all_matches = []
-    seen_ids = set()
+    """Fetch recent match history for a profile_id from the Relic API.
+    Returns dicts newest-first: {match_id, map, civ, opponents (list[str]),
+    result ('win'|'loss'|None), rating_delta (int|None), duration_min
+    (float|None), ago_text, strategy (always None -- not in this API)}."""
+    try:
+        target_id = int(profile_id)
+    except (TypeError, ValueError):
+        LOGGER.warning("get_recent_matches got a non-numeric profile_id: %r", profile_id)
+        return []
 
-    for page in range(1, max_pages + 1):
-        params = {} if page == 1 else {"page": page}
-        try:
-            resp = _get(f"{BASE}/user/{profile_id}/matches/", params=params)
-        except requests.RequestException as e:
-            LOGGER.warning("matches request failed for profile %s page %d: %s", profile_id, page, e)
-            break
+    try:
+        data = _get("/community/leaderboard/getRecentMatchHistory", {
+            "title": TITLE,
+            "profile_ids": json.dumps([target_id]),
+        })
+    except (requests.RequestException, ValueError) as e:
+        LOGGER.warning("match history request failed for profile %s: %s", target_id, e)
+        return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        match_links = soup.find_all("a", href=MATCH_LINK_RE)
-        if not match_links:
-            LOGGER.info("matches_debug no match links found for profile %s page %d; response length=%d",
-                        profile_id, page, len(resp.text))
-            break
+    stats = data.get("matchHistoryStats") or []
+    if not stats:
+        LOGGER.info("matches_debug no matchHistoryStats for profile %s; raw keys=%s", target_id, list(data.keys()))
+        return []
 
-        page_new = 0
-        for a in match_links:
-            m = MATCH_LINK_RE.search(a.get("href", ""))
-            if not m:
+    stats.sort(key=lambda m: m.get("startgametime") or 0, reverse=True)
+
+    matches = []
+    for m in stats[:min_matches]:
+        results = m.get("matchhistoryreportresults") or []
+        me = next((r for r in results if r.get("profile_id") == target_id), None)
+        if me is None:
+            continue
+
+        civ = aoe2ref.civ_name(me.get("civilization_id"))
+        opponents = []
+        for r in results:
+            if r is me:
                 continue
-            match_id = m.group(1)
-            if match_id in seen_ids:
-                continue
-            seen_ids.add(match_id)
-            page_new += 1
+            oc = aoe2ref.civ_name(r.get("civilization_id"))
+            if oc:
+                opponents.append(oc)
 
-            container = a
-            for _ in range(4):
-                if container.parent is not None:
-                    container = container.parent
-            block_text = container.get_text(" ", strip=True)
+        resulttype = me.get("resulttype")
+        result = "win" if resulttype == 1 else ("loss" if resulttype is not None else None)
 
-            all_matches.append(_parse_match_block(match_id, block_text))
+        member = me.get("matchhistorymember") or {}
+        old_r, new_r = member.get("oldrating"), member.get("newrating")
+        rating_delta = (new_r - old_r) if (old_r is not None and new_r is not None) else None
 
-        if page_new == 0:
-            break
-        if len(all_matches) >= min_matches:
-            break
-        time.sleep(0.5)  # be polite between pages
+        start, end = m.get("startgametime"), m.get("completiontime")
+        duration_min = round((end - start) / 60, 1) if (start and end and end > start) else None
 
-    return all_matches[:max(min_matches, len(all_matches))]
+        matches.append({
+            "match_id": m.get("id"),
+            "map": _prettify_map(m.get("mapname")),
+            "civ": civ,
+            "opponents": opponents[:7],
+            "result": result,
+            "rating_delta": rating_delta,
+            "duration_min": duration_min,
+            "ago_text": _time_ago(start),
+            "strategy": None,
+        })
 
-
-def _parse_match_block(match_id, text):
-    civ = next((c for c in aoe2ref.CIV_NAMES if c in text), None)
-    map_name = next((m for m in aoe2ref.MAP_NAMES if m in text), None)
-
-    result = None
-    if re.search(r"\bWin\b", text):
-        result = "win"
-    elif re.search(r"\bLoss\b|\bLost\b|\bDefeat\b", text, re.IGNORECASE):
-        result = "loss"
-
-    rating_delta = None
-    delta_match = DELTA_RE.search(text)
-    if delta_match:
-        try:
-            rating_delta = int(delta_match.group(1).replace(" ", ""))
-        except ValueError:
-            rating_delta = None
-
-    duration_min = None
-    dur_match = DURATION_RE.search(text)
-    if dur_match:
-        minutes = int(dur_match.group(1))
-        seconds = int(dur_match.group(2)) if dur_match.group(2) else 0
-        duration_min = round(minutes + seconds / 60, 1)
-
-    ago_match = AGO_RE.search(text)
-    ago_text = ago_match.group(1) if ago_match else None
-
-    strategy_match = STRATEGY_RE.search(text)
-    strategy = strategy_match.group(1).strip() if strategy_match else None
-
-    # Opponent civs: every civ name mentioned besides the player's own.
-    opponents = [c for c in aoe2ref.CIV_NAMES if c in text and c != civ]
-
-    return {
-        "match_id": int(match_id),
-        "map": map_name,
-        "civ": civ,
-        "opponents": opponents[:7],
-        "result": result,
-        "rating_delta": rating_delta,
-        "duration_min": duration_min,
-        "ago_text": ago_text,
-        "strategy": strategy,
-    }
+    return matches

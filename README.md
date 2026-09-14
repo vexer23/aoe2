@@ -12,8 +12,10 @@ extension, nothing needs to stay running on your computer.
 
 ## What it does
 
-- **Search** — type a name, it searches public match records on
-  aoe2insights.com and shows candidate profiles to confirm.
+- **Search** — type your exact in-game name and it looks up your profile
+  directly against Relic/World's Edge's official public match API (the same
+  backend aoe2insights.com, aoe2companion.com and aoestats.io all run on top
+  of), and shows the match to confirm.
 - **Track** — once you confirm a profile, it remembers it and refreshes
   automatically every 20 minutes in the background.
 - **Replays** — for each new match it finds, it downloads the official
@@ -54,9 +56,11 @@ There's no external database to configure.
 
 ## Known limitation
 
-The match-list scraping (`scraper.py`) targets aoe2insights.com's current
-page structure using pattern-matching rather than a fixed API, since no
-public API exists. If aoe2insights.com changes its page layout, the
-scraper may need small selector updates — Railway's logs will show
-`search_debug` / `matches_debug` lines that make this quick to diagnose
-and fix.
+Player search (`scraper.py`) does an **exact** name match against the Relic
+API — there's no partial/typeahead search endpoint on that backend, so a
+misspelled or partial name won't find anyone. It tries a few case variants
+of what you type (as-typed, lowercase, Title Case) before giving up. There's
+also no "opening strategy" data in this API, so that breakdown stays empty
+unless a future version adds it from replay analysis instead. Railway's logs
+show `search_debug` / `matches_debug` lines if you ever need to check what a
+lookup actually returned.

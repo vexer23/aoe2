@@ -13,7 +13,6 @@ COPY . .
 
 RUN mkdir -p /data/replays
 
-
 ENV DB_PATH=/data/app.db
 ENV REPLAY_DIR=/data/replays
 ENV PORT=8080

@@ -50,7 +50,10 @@ _MILITARY_KEYWORDS = (
 
 
 def civ_name(civ_id):
-    """mgz civilization_id -> display name."""
+    """mgz civilization_id -> display name. None in, None out (a missing/
+    unknown id from a scraped or API source shouldn't render as a fake name)."""
+    if civ_id is None:
+        return None
     entry = CIVILIZATIONS.get(str(civ_id))
     if entry:
         return entry.get("name", f"Civ {civ_id}")
